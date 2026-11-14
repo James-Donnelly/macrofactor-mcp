@@ -123,7 +123,7 @@ npm run db:init
 ### 3. Set the secrets
 ```bash
 npx wrangler secret put INGEST_SECRET   # pick any strong random string
-npx wrangler secret put MCP_TOKEN       # recommended — protects the MCP endpoint (see step 6)
+npx wrangler secret put MCP_TOKEN       # required — protects the MCP endpoint (see step 6)
 ```
 
 ### 4. Deploy
@@ -148,9 +148,12 @@ Claude.ai → **Settings → Connectors → Add custom connector**:
 - URL: `https://macrofactor-mcp.<you>.workers.dev/mcp/<MCP_TOKEN>`
 - Authentication: **None** (the secret token in the URL *is* the auth)
 
-If you skipped `MCP_TOKEN` the URL is plain `/mcp` — **not recommended**: without a token,
-anyone who learns your Worker URL can read your nutrition/health data and queue food logs
-to your phone. Treat the full connector URL as a secret either way.
+MCP access fails closed when `MCP_TOKEN` is not configured. Clients that support request
+headers can instead use `/mcp` with `Authorization: Bearer <MCP_TOKEN>`, keeping the secret
+out of the URL. Treat the full capability URL and bearer token as credentials.
+
+iPhone endpoints also accept the `x-ingest-secret` header, so new Shortcuts do not need
+to include the ingest credential in their URL. Existing query-token Shortcuts still work.
 
 Ask things like *"what was my protein this week?"* or *"how does my intake compare to my
 expenditure this month?"*

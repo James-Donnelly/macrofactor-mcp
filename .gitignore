@@ -10,3 +10,7 @@ worker-configuration.d.ts
 .superpowers/
 .gstack/
 *.csv
+
+# Local setup credentials and authenticated connection details
+.local/
+wrangler.personal.jsonc

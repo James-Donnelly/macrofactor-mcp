@@ -6,6 +6,7 @@ import * as db from "./db";
 import { buildFoodPayload, buildRecipePayload, type LogFoodArgs } from "./nutrients";
 import { handleIngest } from "./ingest";
 import { ImportDO } from "./importer";
+import { authenticatedMcpPath, ingestToken } from "./auth";
 
 export { ImportDO };
 
@@ -114,7 +115,10 @@ function inferMealLabel(date: string, startHour?: number): string {
 }
 
 export class MyMCP extends McpAgent<Env> {
-  server = new McpServer({ name: "MacroFactor", version: "0.1.0" });
+  server = new McpServer(
+    { name: "MacroFactor", version: "0.1.0" },
+    { instructions: "Personal MacroFactor bridge. Read data_status before relying on imported data. Food logging tools queue a request for the user's iPhone Shortcut; queued or sent does not mean logged. Check get_pending_logs for landed:true before confirming completion. Log only food the user reports eating, using total nutrients for the portion eaten. MacroFactor logs at phone tap-time; intended_time only annotates this bridge's analytics. Do not infer that a whole day is fully logged from a single meal or a partial export." },
+  );
 
   async init() {
     const DB = () => this.env.DB;
@@ -1142,12 +1146,12 @@ export class MyMCP extends McpAgent<Env> {
 // iPhone Shortcut can feed it straight to "Log by JSON". 204 when nothing is queued.
 async function handlePending(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const token = url.searchParams.get("token");
+  const token = ingestToken(request);
   if (!env.INGEST_SECRET || token !== env.INGEST_SECRET) {
     return new Response("unauthorized", { status: 401 });
   }
   const row = await db.popPendingFood(env.DB);
-  if (!row) return new Response("", { status: 204 });
+  if (!row) return new Response(null, { status: 204 });
   // Audit is best-effort: the pending row is already popped, so a dispatch-log failure must
   // never 500 the response — the food would be lost without ever reaching Log by JSON.
   try {
@@ -1164,7 +1168,7 @@ async function handlePending(request: Request, env: Env): Promise<Response> {
 // nothing is queued. Kept separate from /pending so the food path is untouched.
 async function handlePendingWater(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const token = url.searchParams.get("token");
+  const token = ingestToken(request);
   if (!env.INGEST_SECRET || token !== env.INGEST_SECRET) {
     return new Response("unauthorized", { status: 401 });
   }
@@ -1176,7 +1180,7 @@ async function handlePendingWater(request: Request, env: Env): Promise<Response>
   } catch {
     return new Response("", { status: 500 });
   }
-  if (ml == null) return new Response("", { status: 204 });
+  if (ml == null) return new Response(null, { status: 204 });
   return new Response(String(ml), { status: 200, headers: { "Content-Type": "text/plain" } });
 }
 
@@ -1185,7 +1189,7 @@ async function handlePendingWater(request: Request, env: Env): Promise<Response>
 // "MF Log Weight" Shortcut can feed it to MacroFactor's Log Weight action. 204 when empty.
 async function handlePendingWeight(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const token = url.searchParams.get("token");
+  const token = ingestToken(request);
   if (!env.INGEST_SECRET || token !== env.INGEST_SECRET) {
     return new Response("unauthorized", { status: 401 });
   }
@@ -1196,7 +1200,7 @@ async function handlePendingWeight(request: Request, env: Env): Promise<Response
   } catch {
     return new Response("", { status: 500 });
   }
-  if (kg == null) return new Response("", { status: 204 });
+  if (kg == null) return new Response(null, { status: 204 });
   return new Response(String(parseFloat(kg.toFixed(3))), { status: 200, headers: { "Content-Type": "text/plain" } });
 }
 
@@ -1206,12 +1210,12 @@ async function handlePendingWeight(request: Request, env: Env): Promise<Response
 async function handlePendingBatch(request: Request, env: Env): Promise<Response> {
   if (request.method !== "GET") return json({ error: "GET only" }, 405);
   const url = new URL(request.url);
-  const token = url.searchParams.get("token");
+  const token = ingestToken(request);
   if (!env.INGEST_SECRET || token !== env.INGEST_SECRET) {
     return new Response("unauthorized", { status: 401 });
   }
   const row = await db.claimPendingBatch(env.DB);
-  if (!row) return new Response("", { status: 204 });
+  if (!row) return new Response(null, { status: 204 });
   // pop=1: delete the batch as it's served so the iOS Shortcut needs no separate /ack-batch
   // call (removes the fragile batch_id-in-URL step). Trade-off: a crash mid-loop loses the
   // rest of the batch instead of re-serving it — acceptable for single-user meal logging.
@@ -1224,7 +1228,7 @@ async function handlePendingBatch(request: Request, env: Env): Promise<Response>
 async function handleAckBatch(request: Request, env: Env): Promise<Response> {
   if (request.method !== "POST") return json({ error: "POST only" }, 405);
   const url = new URL(request.url);
-  const token = url.searchParams.get("token");
+  const token = ingestToken(request);
   if (!env.INGEST_SECRET || token !== env.INGEST_SECRET) {
     return json({ error: "unauthorized" }, 401);
   }
@@ -1244,7 +1248,7 @@ async function handleAckBatch(request: Request, env: Env): Promise<Response> {
 async function handleCancelPending(request: Request, env: Env): Promise<Response> {
   if (request.method !== "DELETE" && request.method !== "POST") return json({ error: "DELETE or POST only" }, 405);
   const url = new URL(request.url);
-  const token = url.searchParams.get("token");
+  const token = ingestToken(request);
   if (!env.INGEST_SECRET || token !== env.INGEST_SECRET) {
     return new Response("unauthorized", { status: 401 });
   }
@@ -1278,7 +1282,7 @@ function validIsoDate(s: unknown): string | null {
 // POST /today?clear=YYYY-MM-DD  — delete one date's live row (hygiene / bad post).
 async function handleToday(request: Request, env: Env): Promise<Response> {
   const url = new URL(request.url);
-  const tok = request.headers.get("x-ingest-secret") || url.searchParams.get("token");
+  const tok = ingestToken(request);
   if (!env.INGEST_SECRET || tok !== env.INGEST_SECRET) return json({ error: "unauthorized" }, 401);
   if (request.method !== "POST") return json({ error: "POST only" }, 405);
 
@@ -1390,7 +1394,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (url.pathname === "/ingest") return handleIngest(request, env);
   if (url.pathname === "/upload-export") {
     if (request.method !== "POST") return new Response("POST only", { status: 405 });
-    const t = request.headers.get("x-ingest-secret") || url.searchParams.get("token");
+    const t = ingestToken(request);
     if (!env.INGEST_SECRET || t !== env.INGEST_SECRET) return new Response("unauthorized", { status: 401 });
     // Accept the .xlsx as either the raw request body or a multipart file field
     // (iOS Shortcuts may send it either way).
@@ -1437,11 +1441,11 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
     }
   }
 
-  // MCP endpoint. If MCP_TOKEN is set, the agent is served natively at the secret
-  // path /mcp/<token> so the authless connector URL is unguessable. No rewriting —
+  // MCP_TOKEN is required. Header-capable clients use /mcp with a bearer token;
+  // other clients can use the secret path /mcp/<token>. No rewriting —
   // the transport must own the real request path for its streaming to work.
-  const mcpPath = env.MCP_TOKEN ? `/mcp/${env.MCP_TOKEN}` : "/mcp";
-  if (url.pathname === mcpPath) {
+  const mcpPath = authenticatedMcpPath(request, env.MCP_TOKEN);
+  if (mcpPath) {
     return MyMCP.serve(mcpPath).fetch(request, env, ctx);
   }
   if (url.pathname === "/mcp" || url.pathname.startsWith("/mcp/")) {

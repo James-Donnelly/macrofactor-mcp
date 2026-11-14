@@ -29,7 +29,7 @@
 
   // Secrets (set via `npx wrangler secret put NAME`, do NOT put them here):
   //   INGEST_SECRET              - shared secret for /today, /upload-export, /pending*, /ingest
-  //   MCP_TOKEN                  - (optional) makes the MCP URL capability-style /mcp/<token>
+  //   MCP_TOKEN                  - (required) makes the MCP URL capability-style /mcp/<token>
   //   PUSHCUT_WEBHOOK_URL        - (optional) Pushcut webhook for food log notifications
   //   PUSHCUT_WATER_WEBHOOK_URL  - (optional) Pushcut webhook for water log notifications
   //   PUSHCUT_WEIGHT_WEBHOOK_URL - (optional) Pushcut webhook for weight log notifications

@@ -3,7 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "type": "module",
   "scripts": {
     "deploy": "wrangler deploy",
@@ -13,16 +15,20 @@
     "ingest": "node scripts/ingest.mjs",
     "cf-typegen": "wrangler types",
     "type-check": "tsc --noEmit",
-    "doc-drift": "node scripts/doc-drift.mjs"
+    "doc-drift": "node scripts/doc-drift.mjs",
+    "test": "node --test tests/*.test.mjs"
   },
   "dependencies": {
-    "agents": "^0.17.1",
-    "xlsx": "^0.18.5",
-    "zod": "^4.4.3"
+    "@modelcontextprotocol/client": "^2.4.0",
+    "@modelcontextprotocol/sdk": "1.32.2",
+    "@modelcontextprotocol/server": "^2.4.0",
+    "agents": "0.33.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "4.6.7"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250310.0",
+    "@cloudflare/workers-types": "5.20261114.1",
     "typescript": "^5.6.0",
-    "wrangler": "^4.105.0"
+    "wrangler": "4.162.0"
   }
 }
